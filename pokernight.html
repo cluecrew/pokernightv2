@@ -1,0 +1,189 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Poker Night with the Boys</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+<div class="app">
+  <section id="menuScreen">
+    <div class="menu-hero">
+      <h1>Poker Night with the Boys</h1>
+      <p>Climb from casual home games to legendary nights with the boys as your bankroll grows and tougher tables unlock.</p>
+      <div class="bankroll-card"><span>Bank Account</span><strong id="menuBankroll">$1,000</strong></div>
+      <div class="menu-name-row">
+        <label for="playerNameInput">Your Name</label>
+        <input id="playerNameInput" type="text" maxlength="18" value="You" />
+        <button id="saveNameBtn" class="ok-btn">Save Name</button>
+      </div>
+      <div class="menu-utility-row">
+        <button id="openMinesBtn" class="neutral-btn">Play Minesweeper for $<span id="mineRewardBtnText">50</span></button>
+      </div>
+    </div>
+    <div class="menu-actions">
+      <button id="showTablesBtn" class="neutral-btn">Tables</button>
+      <button id="showShopBtn" class="neutral-btn">Shop</button>
+      <button id="showInfoBtn" class="neutral-btn">Info</button>
+      <button id="toggleMobileModeBtn" class="neutral-btn">Mobile Mode</button>
+    </div>
+
+    <section id="sessionRecapPanel" class="menu-panel hidden">
+      <div class="menu-panel-heading-row">
+        <h2>Session Recap</h2>
+        <button id="closeSessionRecapBtn" class="neutral-btn">Close Recap</button>
+      </div>
+      <div id="sessionRecapGrid" class="locations"></div>
+    </section>
+
+    <section id="tablesPage" class="menu-page">
+      <section id="minesPanel" class="menu-panel hidden">
+        <h2>Bailout Minesweeper</h2>
+        <p>Clear the board without hitting a mine to earn $<span id="mineRewardText">50</span>.</p>
+        <div id="mineStatus">Good luck.</div>
+        <div id="mineBoard"></div>
+        <div class="menu-panel-actions">
+          <button id="flagModeBtn" class="ok-btn">Flag Mode: OFF</button>
+          <button id="newMinesBtn" class="neutral-btn">New Minesweeper Board</button>
+        </div>
+      </section>
+
+      <div class="locations" id="locations"></div>
+    </section>
+
+    <section id="shopPage" class="menu-page hidden">
+      <div class="menu-page-header">
+        <div>
+          <h2>Shop</h2>
+          <p>Buy upgrades, equip companions, and tune the room before sitting down.</p>
+        </div>
+        <button class="backToTablesBtn neutral-btn">Back to Tables</button>
+      </div>
+
+      <div class="submenu-actions" data-submenu="shop">
+        <button id="showPowerUpsTab" class="neutral-btn" data-subpage-target="powerUpsPanel">Power-Ups</button>
+        <button id="showCompanionsTab" class="neutral-btn" data-subpage-target="companionsPanel">Companions</button>
+        <button id="showCosmeticsTab" class="neutral-btn" data-subpage-target="shopPanel">Cosmetics</button>
+      </div>
+
+      <section id="powerUpsPanel" class="menu-panel submenu-panel" data-subpage="shop">
+        <h2>Power-Ups</h2>
+        <p>Useful unlocks that add information, safety, or small rebates without changing the cards.</p>
+        <div id="powerUpsGrid" class="locations"></div>
+      </section>
+
+      <section id="companionsPanel" class="menu-panel submenu-panel hidden" data-subpage="shop">
+        <h2>Companions</h2>
+        <p>Equip one companion for a small passive perk and table flavor.</p>
+        <div id="companionsGrid" class="locations"></div>
+      </section>
+
+      <section id="shopPanel" class="menu-panel submenu-panel hidden" data-subpage="shop">
+        <h2>Cosmetics</h2>
+        <p>Buy cosmetics with your bankroll. Owned cosmetics stay unlocked.</p>
+        <div id="shopGrid" class="locations"></div>
+      </section>
+    </section>
+
+    <section id="infoPage" class="menu-page hidden">
+      <div class="menu-page-header">
+        <div>
+          <h2>Info</h2>
+          <p>Review opponents, career progress, play style, and achievements.</p>
+        </div>
+        <button class="backToTablesBtn neutral-btn">Back to Tables</button>
+      </div>
+
+      <div class="submenu-actions" data-submenu="info">
+        <button id="showBotsTab" class="neutral-btn" data-subpage-target="botsPanel">Bots</button>
+        <button id="showCareerTab" class="neutral-btn" data-subpage-target="careerPanel">Career</button>
+        <button id="showProfileTab" class="neutral-btn" data-subpage-target="playerProfilePanel">Profile</button>
+        <button id="showAchievementsTab" class="neutral-btn" data-subpage-target="achievementsPanel">Achievements</button>
+      </div>
+
+      <section id="botsPanel" class="menu-panel submenu-panel" data-subpage="info">
+        <h2>Bot Personalities</h2>
+        <div id="botsGrid" class="locations"></div>
+      </section>
+
+      <section id="careerPanel" class="menu-panel submenu-panel hidden" data-subpage="info">
+        <h2>Career Stats</h2>
+        <div id="careerStatsGrid" class="locations"></div>
+      </section>
+
+      <section id="playerProfilePanel" class="menu-panel submenu-panel hidden" data-subpage="info">
+        <h2>Player Profile</h2>
+        <div id="playerProfileContent"></div>
+      </section>
+
+      <section id="achievementsPanel" class="menu-panel submenu-panel hidden" data-subpage="info">
+        <h2>Achievements</h2>
+        <div id="achievementsGrid" class="locations"></div>
+      </section>
+    </section>
+
+    <div style="height:10px"></div>
+  </section>
+
+  <section id="gameScreen" class="hidden">
+    <header>
+      <div class="table-title"><h1 id="tableName">Texas Hold'em</h1><small id="tableSubtitle"></small></div>
+      <div class="top-stats">
+        <div class="money-summary">
+          <div class="money-part"><small>Bank</small><strong id="bankrollTop">$1,000</strong></div>
+          <div class="money-part"><small>Table Stack</small><strong id="heroChips">$1,000</strong></div>
+          <div class="money-part money-total"><small>Total Money</small><strong id="totalMoneyTop">$2,000</strong></div>
+        </div>
+        <div class="stat"><small>Hand</small><strong id="handNum">1</strong></div>
+        <div class="stat"><small>Pot</small><strong id="topPot">$0</strong></div>
+        <div class="stat"><small>To Call</small><strong id="toCall">$0</strong></div>
+        
+      </div>
+    </header>
+
+    <main class="table-wrap">
+      <section class="players" id="players"></section>
+      <section class="center-area">
+        <div class="pot-display">Pot: <span id="pot">$0</span></div>
+        <div id="potBreakdown" style="display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;"></div>
+        <div id="potChips" class="pot-chips"></div>
+        <div id="actionBanner" class="action-banner">Waiting for action...</div>
+        <div id="oddsHelperLine" class="odds-helper-line"></div>
+        <div class="community" id="community"></div>
+        <div class="message" id="message">Choose an action.</div>
+        
+      </section>
+      <section class="hero-area" id="heroArea"></section>
+    </main>
+
+    <div class="action-dock">
+      <section class="controls">
+        <button id="foldBtn" class="danger-btn">Fold</button>
+        <button id="checkBtn" class="neutral-btn">Check</button>
+        <button id="callBtn">Call</button>
+        <button id="betBtn" class="ok-btn">Raise 3x</button>
+        <button id="nextHandBtn" class="neutral-btn">Next Hand</button>
+      </section>
+      <div class="raise-box">
+        <button id="raise2xBtn" class="neutral-btn">2x BB</button>
+        <button id="raise3xBtn" class="ok-btn">3x BB</button>
+        <button id="raise5xBtn" class="neutral-btn">5x BB</button>
+        <button id="allInBtn" class="danger-btn">All In</button>
+        <button id="oddsTipBtn" class="neutral-btn">Tip SB for Odds</button>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center; color:white; font-weight:bold;">
+          <label for="customBetSlider">Custom:</label>
+          <input id="customBetSlider" type="range" min="0" max="0" step="1" value="0" style="width:160px; accent-color:var(--gold);" />
+          <span id="customBetAmount" style="color:var(--gold); min-width:70px; text-align:right;">$0</span>
+          <button id="customBetBtn" class="ok-btn">Bet</button>
+        </div>
+        <button id="leaveTableBtn" class="neutral-btn">Cash Out / Menu</button>
+      </div>
+    </div>
+    <section class="log" id="log"></section>
+  </section>
+</div>
+<script type="module" src="./src/game.js"></script>
+</body>
+</html>
+
