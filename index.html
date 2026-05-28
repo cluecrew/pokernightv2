@@ -26,6 +26,7 @@
       <button id="showTablesBtn" class="neutral-btn">Tables</button>
       <button id="showShopBtn" class="neutral-btn">Shop</button>
       <button id="showInfoBtn" class="neutral-btn">Info</button>
+      <button id="showPassiveIncomeBtn" class="neutral-btn">Earnings</button>
       <button id="toggleMobileModeBtn" class="neutral-btn">Mobile Mode</button>
     </div>
 
@@ -38,17 +39,6 @@
     </section>
 
     <section id="tablesPage" class="menu-page">
-      <section id="minesPanel" class="menu-panel hidden">
-        <h2>Bailout Minesweeper</h2>
-        <p>Clear the board without hitting a mine to earn $<span id="mineRewardText">50</span>.</p>
-        <div id="mineStatus">Good luck.</div>
-        <div id="mineBoard"></div>
-        <div class="menu-panel-actions">
-          <button id="flagModeBtn" class="ok-btn">Flag Mode: OFF</button>
-          <button id="newMinesBtn" class="neutral-btn">New Minesweeper Board</button>
-        </div>
-      </section>
-
       <div class="locations" id="locations"></div>
     </section>
 
@@ -120,6 +110,89 @@
       <section id="achievementsPanel" class="menu-panel submenu-panel hidden" data-subpage="info">
         <h2>Achievements</h2>
         <div id="achievementsGrid" class="locations"></div>
+      </section>
+    </section>
+
+    <section id="passiveIncomePage" class="menu-page hidden">
+      <div class="menu-page-header">
+        <div>
+          <h2>Earnings</h2>
+          <p>Build passive bankroll engines or grind out active side cash between poker sessions.</p>
+        </div>
+        <button class="backToTablesBtn neutral-btn">Back to Tables</button>
+      </div>
+
+      <div class="submenu-actions" data-submenu="passive">
+        <button id="showMinesweeperTab" class="neutral-btn" data-subpage-target="minesPanel">Minesweeper</button>
+        <button id="showSponsoredTablesTab" class="neutral-btn" data-subpage-target="sponsoredTablesPanel">Sponsored Tables</button>
+        <button id="showDrakeCoinTab" class="neutral-btn" data-subpage-target="drakeCoinPanel">DrakeCoin</button>
+        <button id="showRothIraTab" class="neutral-btn" data-subpage-target="rothIraPanel">Roth IRA</button>
+      </div>
+
+      <section id="minesPanel" class="menu-panel submenu-panel" data-subpage="passive">
+        <h2>Bailout Minesweeper</h2>
+        <p>Clear the board without hitting a mine to earn $<span id="mineRewardText">50</span>.</p>
+        <div id="mineStatus">Good luck.</div>
+        <div id="mineBoard"></div>
+        <div class="menu-panel-actions">
+          <button id="flagModeBtn" class="ok-btn">Flag Mode: OFF</button>
+          <button id="newMinesBtn" class="neutral-btn">New Minesweeper Board</button>
+        </div>
+      </section>
+
+      <section id="sponsoredTablesPanel" class="menu-panel passive-income-panel submenu-panel hidden" data-subpage="passive">
+        <h2>Sponsored Tables</h2>
+        <p>Back small poker-night ventures that earn steady cash over time.</p>
+        <div class="passive-summary">
+          <div class="pill">Ready to Collect<b id="passiveReadyAmount">$0</b></div>
+          <div class="pill">Income Rate<b id="passiveIncomeRate">$0 / min</b></div>
+          <div class="pill">Owned Ventures<b id="passiveOwnedCount">0</b></div>
+          <button id="collectPassiveIncomeBtn" class="ok-btn">Collect Income</button>
+        </div>
+        <div id="passiveIncomeGrid" class="locations"></div>
+      </section>
+
+      <section id="drakeCoinPanel" class="menu-panel submenu-panel hidden" data-subpage="passive">
+        <h2>DrakeCoin Exchange</h2>
+        <p>A volatile meme coin for players who want their bankroll to sweat between hands.</p>
+        <div class="market-board">
+          <div class="pill">Ticker<b id="drakeTickerPrice">$0.00</b></div>
+          <div class="pill">24h Mood<b id="drakeTickerMood">Flat</b></div>
+          <div class="pill">You Own<b id="drakeCoinOwned">0.0000 DRAKE</b></div>
+          <div class="pill">Position Value<b id="drakeCoinValue">$0</b><span id="drakeCoinGain" class="position-change">$0</span></div>
+        </div>
+        <div class="chart-wrap">
+          <svg id="drakeLineChart" class="line-chart" viewBox="0 0 640 190" role="img" aria-label="DrakeCoin price chart"></svg>
+        </div>
+        <div class="trade-row">
+          <label for="drakeBuyAmount">Buy with</label>
+          <input id="drakeBuyAmount" type="number" min="0" step="1" placeholder="$ amount" />
+          <button id="buyDrakeCoinBtn" class="ok-btn">Buy DrakeCoin</button>
+        </div>
+        <div class="trade-row">
+          <label for="drakeSellAmount">Sell</label>
+          <input id="drakeSellAmount" type="number" min="0" step="0.0001" placeholder="DRAKE amount" />
+          <button id="sellDrakeCoinBtn" class="danger-btn">Sell DrakeCoin</button>
+          <button id="sellAllDrakeCoinBtn" class="neutral-btn">Sell All</button>
+        </div>
+      </section>
+
+      <section id="rothIraPanel" class="menu-panel submenu-panel hidden" data-subpage="passive">
+        <h2>Roth IRA</h2>
+        <p>A stable long-term account. Deposits lock until the same time tomorrow, then can be withdrawn with steady growth.</p>
+        <div class="market-board">
+          <div class="pill">Locked<b id="rothLockedBalance">$0</b></div>
+          <div class="pill">Unlocked<b id="rothUnlockedBalance">$0</b></div>
+          <div class="pill">Total Value<b id="rothProjected">$0</b></div>
+          <div class="pill">Daily Return<b id="rothRate">3.00%</b></div>
+          <div class="pill">Unlocks In<b id="rothUnlockText">No deposit</b></div>
+        </div>
+        <div class="trade-row">
+          <label for="rothDepositAmount">Deposit</label>
+          <input id="rothDepositAmount" type="number" min="0" step="1" placeholder="$ amount" />
+          <button id="depositRothBtn" class="ok-btn">Deposit Until Tomorrow</button>
+          <button id="withdrawRothBtn" class="neutral-btn">Withdraw</button>
+        </div>
       </section>
     </section>
 

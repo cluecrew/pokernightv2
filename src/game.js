@@ -32,35 +32,86 @@ let activePowerUps=JSON.parse(localStorage.getItem('pokerActivePowerUps_v1')||'n
 let ownedCompanions=JSON.parse(localStorage.getItem('pokerOwnedCompanions_v1')||'[]');
 let selectedCompanion=localStorage.getItem('pokerSelectedCompanion_v1')||'';
 let mobileMode=localStorage.getItem('pokerMobileMode_v1')==='true';
-let careerStats=loadCareerStats(),currentSession=null,lastSessionRecap=null,lastHandWinners=[],handStartStacks=[],currentHandHeroRaised=false,currentHandHeroPreflopStrength=0,currentHandProfile={vpip:false,pfr:false},mobileBetDrag=null,suppressNextBetClick=false,oddsTipUsedThisHand=false,oddsTipMessage='',tiltGuardWarnedThisHand=false;
+let careerStats=loadCareerStats(),currentSession=null,lastSessionRecap=null,showSessionRecap=false,lastHandWinners=[],handStartStacks=[],currentHandHeroRaised=false,currentHandHeroPreflopStrength=0,currentHandProfile={vpip:false,pfr:false},mobileBetDrag=null,suppressNextBetClick=false,oddsTipUsedThisHand=false,oddsTipMessage='',tiltGuardWarnedThisHand=false;
 careerStats.biggestBankroll=Math.max(careerStats.biggestBankroll,bankroll);
 const el=id=>document.getElementById(id); const money=n=>'$'+Math.round(n).toLocaleString();
+const PASSIVE_BUSINESSES=[
+  {id:'snack_table',name:'Basement Snack Table',desc:'Chips, sodas, and late-night candy for the regulars.',cost:150,baseIncome:2,upgradeCost:110,upgradeIncome:1.25},
+  {id:'card_protector_shop',name:'Card Protector Shop',desc:'Novelty chips, lucky charms, and table trinkets.',cost:450,baseIncome:6,upgradeCost:320,upgradeIncome:3},
+  {id:'poker_stream',name:'Poker Night Stream',desc:'Tiny ad checks from hand recaps and questionable calls.',cost:900,baseIncome:13,upgradeCost:650,upgradeIncome:6},
+  {id:'dealer_school',name:'Dealer School',desc:'Train weekend dealers and take a small cut of every class.',cost:1800,baseIncome:28,upgradeCost:1200,upgradeIncome:13},
+  {id:'private_room',name:'Private Room Stake',desc:'A reserved table, better chairs, and a steady house fee.',cost:4200,baseIncome:72,upgradeCost:2800,upgradeIncome:34}
+];
+const DRAKE_START_PRICE=12;
+const ROTH_DAILY_RATE=.03;
+let passiveIncomeState=normalizePassiveIncomeState(safeJson('pokerPassiveIncome_v1',{}));
 function escapeHtml(value){
   return String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 function log(t){const d=document.createElement('div');d.textContent=t;el('log').prepend(d)}
 function showMenu(){el('gameScreen').classList.add('hidden');el('menuScreen').classList.remove('hidden');renderMenu()}
 function showMenuPage(page){
-  ['tablesPage','shopPage','infoPage'].forEach(id=>el(id)?.classList.toggle('hidden', id!==page));
+  ['tablesPage','shopPage','infoPage','passiveIncomePage'].forEach(id=>el(id)?.classList.toggle('hidden', id!==page));
+  if(page!=='tablesPage'){showSessionRecap=false;el('sessionRecapPanel')?.classList.add('hidden')}
   el('showTablesBtn')?.classList.toggle('active', page==='tablesPage');
   el('showShopBtn')?.classList.toggle('active', page==='shopPage');
   el('showInfoBtn')?.classList.toggle('active', page==='infoPage');
+  el('showPassiveIncomeBtn')?.classList.toggle('active', page==='passiveIncomePage');
   if(page==='shopPage'&&!document.querySelector('#shopPage .submenu-actions button.active'))showSubmenu('shop','powerUpsPanel');
   if(page==='infoPage'&&!document.querySelector('#infoPage .submenu-actions button.active'))showSubmenu('info','botsPanel');
+  if(page==='passiveIncomePage'&&!document.querySelector('#passiveIncomePage .submenu-actions button.active'))showSubmenu('passive','minesPanel');
+  if(page==='passiveIncomePage')renderPassiveIncome();
 }
 function showSubmenu(group,targetId){
   document.querySelectorAll(`.submenu-panel[data-subpage="${group}"]`).forEach(panel=>panel.classList.toggle('hidden', panel.id!==targetId));
   document.querySelectorAll(`.submenu-actions[data-submenu="${group}"] button`).forEach(btn=>btn.classList.toggle('active', btn.dataset.subpageTarget===targetId));
+  if(targetId==='minesPanel'&&!mineGrid.length)startMinesweeper();
 }
 function saveBankroll(){localStorage.setItem('pokerBankroll_v2', String(bankroll))}
 function saveCosmetics(){localStorage.setItem('pokerOwnedCosmetics_v2',JSON.stringify(ownedCosmetics));localStorage.setItem('pokerSelectedCosmetics_v2',JSON.stringify(selectedCosmetics))}
 function applyMobileMode(){document.body.classList.toggle('mobile-mode',mobileMode);const btn=el('toggleMobileModeBtn');if(btn)btn.textContent=mobileMode?'Mobile Mode: ON':'Mobile Mode'}
 function saveUnlocks(){localStorage.setItem('pokerOwnedPowerUps_v1',JSON.stringify(ownedPowerUps));localStorage.setItem('pokerActivePowerUps_v1',JSON.stringify(activePowerUps));localStorage.setItem('pokerOwnedCompanions_v1',JSON.stringify(ownedCompanions));localStorage.setItem('pokerSelectedCompanion_v1',selectedCompanion)}
+function savePassiveIncome(){localStorage.setItem('pokerPassiveIncome_v1',JSON.stringify(passiveIncomeState))}
 function hasPowerUp(id){return activePowerUps.includes(id)||selectedCompanion==='quiet_owl'&&id==='pot_odds'}
 function hasCompanion(id){return ownedCompanions.includes(id)}
 function minesReward(){return selectedCompanion==='bankroll_buddy'?60:50}
 function cloneData(value){return JSON.parse(JSON.stringify(value))}
 function safeJson(key,fallback){try{return JSON.parse(localStorage.getItem(key)||JSON.stringify(fallback))}catch{return cloneData(fallback)}}
+function normalizePassiveIncomeState(saved){
+  const now=Date.now(),state=saved&&typeof saved==='object'?saved:{};
+  const drakeCoins=Number(state.drake?.coins)||0;
+  const drakePrice=Math.max(.25,Number(state.drake?.price)||DRAKE_START_PRICE);
+  const hasDrakeCostBasis=state.drake&&Object.prototype.hasOwnProperty.call(state.drake,'costBasis');
+  let roth={unlockedBalance:0,lockedBalance:0,lockedUntil:0,lastUpdated:now};
+  if(state.roth&&Object.prototype.hasOwnProperty.call(state.roth,'principal')){
+    const principal=Number(state.roth.principal)||0;
+    const depositedAt=Object.prototype.hasOwnProperty.call(state.roth,'depositedAt')?Number(state.roth.depositedAt)||0:now;
+    const lockedUntil=Number(state.roth.lockedUntil)||0;
+    const elapsed=Math.max(0,now-depositedAt);
+    const migratedValue=principal*(1+ROTH_DAILY_RATE*Math.min(1,elapsed/(24*60*60*1000)));
+    roth=now<lockedUntil?{unlockedBalance:0,lockedBalance:migratedValue,lockedUntil,lastUpdated:now}:{unlockedBalance:migratedValue,lockedBalance:0,lockedUntil:0,lastUpdated:now};
+  }else if(state.roth){
+    roth={
+      unlockedBalance:Math.max(0,Number(state.roth.unlockedBalance)||0),
+      lockedBalance:Math.max(0,Number(state.roth.lockedBalance)||0),
+      lockedUntil:Number(state.roth.lockedUntil)||0,
+      lastUpdated:Number(state.roth.lastUpdated)||now
+    };
+  }
+  return {
+    owned:{...(state.owned||{})},
+    uncollected:Number(state.uncollected)||0,
+    lastUpdated:Number(state.lastUpdated)||now,
+    drake:{
+      coins:drakeCoins,
+      costBasis:Math.max(0,hasDrakeCostBasis?Number(state.drake?.costBasis)||0:drakeCoins*drakePrice),
+      price:drakePrice,
+      lastUpdated:Number(state.drake?.lastUpdated)||now,
+      history:Array.isArray(state.drake?.history)&&state.drake.history.length?state.drake.history.slice(-24):[DRAKE_START_PRICE]
+    },
+    roth
+  };
+}
 function loadCareerStats(){
   const saved=safeJson('pokerCareerStats_v1',DEFAULT_CAREER_STATS);
   const achievements=(saved.achievements||[]).map(a=>typeof a==='string'?{id:a,unlockedAt:''}:a).filter(a=>a&&a.id);
@@ -221,7 +272,7 @@ function renderSessionRecap(){
   const panel=el('sessionRecapPanel'),grid=el('sessionRecapGrid');
   if(!panel||!grid)return;
   if(!lastSessionRecap){panel.classList.add('hidden');grid.innerHTML='';return;}
-  panel.classList.remove('hidden');
+  panel.classList.toggle('hidden',!showSessionRecap);
   const bustText=lastSessionRecap.busts.length?lastSessionRecap.busts.join('<br>'):'No bustouts recorded';
   grid.innerHTML=[
     ['Table',lastSessionRecap.table],
@@ -354,6 +405,7 @@ function buyOrEquip(cat,id){
   saveBankroll(); saveCosmetics(); applyCosmetics(); renderMenu();
 }
 function saveBankrollSnapshot(){
+  accruePassiveIncome();
   const atTable = table && players.length && !el('gameScreen').classList.contains('hidden');
   const tableStack = atTable ? (players[0]?.chips || 0) : 0;
   if(atTable){recordActivityTime();saveCareerStats();}
@@ -395,7 +447,223 @@ function scoutBotText(t){
   const celebrity=playerName.toLowerCase()==='josh'?'':'; Josh 5% celebrity';
   return `${fixed.length?`Always: ${fixed.join(', ')}. `:''}Pool: ${pool.join(', ')}${celebrity}`;
 }
-function renderMenu(){saveBankroll();applyCosmetics();applyMobileMode();el('menuBankroll').textContent=money(bankroll);el('playerNameInput').value=playerName;el('mineRewardText').textContent=minesReward();el('mineRewardBtnText').textContent=minesReward();renderShop();renderPowerUps();renderCompanions();renderBots();renderProfile();renderPlayerProfile();renderSessionRecap();const box=el('locations');box.innerHTML='';TABLES.forEach((t,i)=>{const unlocked=bankroll>=t.unlock;const canBuy=bankroll>=t.buyIn;const scout=hasPowerUp('table_scout')?`<div class="pill">Pool<b>${scoutBotText(t)}</b></div>`:'';const d=document.createElement('div');d.className='location '+(!unlocked?'locked':'');d.innerHTML=`<h3>${i+1}. ${t.name}</h3><p>${t.desc}</p><div class="loc-stats"><div class="pill">Buy-In<b>${money(t.buyIn)}</b></div><div class="pill">Blinds<b>${money(t.sb)} / ${money(t.bb)}</b></div><div class="pill">Bots<b>${t.bots}</b></div><div class="pill">Skill<b>${t.skill}</b></div>${scout}</div><button ${!unlocked||!canBuy?'disabled':''}>Play This Table</button><div class="unlock-note">${!unlocked?'Unlock at '+money(t.unlock)+' bankroll':!canBuy?'Need '+money(t.buyIn)+' to buy in':'Available now'}</div>`;d.querySelector('button').onclick=()=>startTable(i);box.appendChild(d)});if(!el('shopPage').classList.contains('hidden'))showMenuPage('shopPage');else if(!el('infoPage').classList.contains('hidden'))showMenuPage('infoPage');else showMenuPage('tablesPage')}
+function passiveIncomeRate(){
+  return PASSIVE_BUSINESSES.reduce((sum,b)=>{
+    const level=passiveIncomeState.owned?.[b.id]||0;
+    if(level<=0)return sum;
+    return sum+b.baseIncome+(level-1)*b.upgradeIncome;
+  },0);
+}
+function accruePassiveIncome(){
+  const now=Date.now(),last=Number(passiveIncomeState.lastUpdated)||now,elapsed=Math.max(0,Math.min(now-last,8*60*60*1000));
+  passiveIncomeState.uncollected=(Number(passiveIncomeState.uncollected)||0)+passiveIncomeRate()*(elapsed/60000);
+  passiveIncomeState.lastUpdated=now;
+  savePassiveIncome();
+}
+function passiveBusinessCost(b){
+  const level=passiveIncomeState.owned?.[b.id]||0;
+  return level<=0?b.cost:Math.round(b.upgradeCost*Math.pow(1.45,level-1));
+}
+function tickDrakeCoin(){
+  const drake=passiveIncomeState.drake,now=Date.now(),tickMs=5000;
+  let ticks=Math.floor(Math.max(0,now-(Number(drake.lastUpdated)||now))/tickMs);
+  if(ticks<=0)return;
+  ticks=Math.min(ticks,720);
+  for(let i=0;i<ticks;i++){
+    const swing=(Math.random()-.48)*.065;
+    const hype=Math.random()<.04?(Math.random()-.35)*.22:0;
+    drake.price=Math.max(.25,Math.min(500,drake.price*(1+swing+hype)));
+    drake.history.push(Number(drake.price.toFixed(2)));
+    if(drake.history.length>24)drake.history.shift();
+  }
+  drake.lastUpdated=now;
+  savePassiveIncome();
+}
+function drakeMood(){
+  const h=passiveIncomeState.drake.history||[];
+  if(h.length<2)return 'Flat';
+  const change=(h[h.length-1]-h[0])/Math.max(.01,h[0]);
+  if(change>.08)return 'Pumping';
+  if(change<-.08)return 'Dumping';
+  return change>=0?'Green':'Choppy';
+}
+function renderLineChart(svg,values){
+  if(!svg)return;
+  const points=(values&&values.length?values:[DRAKE_START_PRICE]).map(Number);
+  const width=640,height=190,pad=18;
+  const min=Math.min(...points),max=Math.max(...points),range=Math.max(.01,max-min);
+  const coords=points.map((value,index)=>{
+    const x=pad+(points.length===1?.5:index/(points.length-1))*(width-pad*2);
+    const y=height-pad-((value-min)/range)*(height-pad*2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const last=points[points.length-1],first=points[0],lineClass=last>=first?'up':'down';
+  const area=`${pad},${height-pad} ${coords.join(' ')} ${width-pad},${height-pad}`;
+  svg.innerHTML=`<defs><linearGradient id="drakeChartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="${lineClass==='up'?'#8fee9f':'#ff8585'}" stop-opacity=".28"/><stop offset="100%" stop-color="${lineClass==='up'?'#8fee9f':'#ff8585'}" stop-opacity="0"/></linearGradient></defs><polyline class="chart-grid" points="${pad},${pad} ${width-pad},${pad} ${width-pad},${height-pad} ${pad},${height-pad} ${pad},${pad}"/><polygon class="chart-area" points="${area}"/><polyline class="chart-line ${lineClass}" points="${coords.join(' ')}"/><circle class="chart-dot ${lineClass}" cx="${coords[coords.length-1].split(',')[0]}" cy="${coords[coords.length-1].split(',')[1]}" r="5"/><text class="chart-label" x="${pad}" y="${pad+3}">$${max.toFixed(2)}</text><text class="chart-label" x="${pad}" y="${height-pad}">$${min.toFixed(2)}</text>`;
+}
+function updateRothIra(){
+  const roth=passiveIncomeState.roth,now=Date.now(),dayMs=24*60*60*1000;
+  const last=Number(roth.lastUpdated)||now;
+  const elapsed=Math.max(0,Math.min(now-last,30*dayMs));
+  if(elapsed>0){
+    const growth=Math.pow(1+ROTH_DAILY_RATE,elapsed/dayMs);
+    roth.unlockedBalance=(Number(roth.unlockedBalance)||0)*growth;
+    roth.lockedBalance=(Number(roth.lockedBalance)||0)*growth;
+    roth.lastUpdated=now;
+  }
+  if((roth.lockedBalance||0)>0&&now>=(roth.lockedUntil||0)){
+    roth.unlockedBalance=(Number(roth.unlockedBalance)||0)+(Number(roth.lockedBalance)||0);
+    roth.lockedBalance=0;
+    roth.lockedUntil=0;
+  }
+  if((roth.unlockedBalance||0)<.01)roth.unlockedBalance=0;
+  if((roth.lockedBalance||0)<.01)roth.lockedBalance=0;
+  if(!(roth.lockedBalance||0))roth.lockedUntil=0;
+  roth.lastUpdated=now;
+}
+function rothTotalValue(){
+  const roth=passiveIncomeState.roth;
+  return (Number(roth.unlockedBalance)||0)+(Number(roth.lockedBalance)||0);
+}
+function formatDuration(ms){
+  if(ms<=0)return 'Ready';
+  const total=Math.ceil(ms/1000),h=Math.floor(total/3600),m=Math.floor((total%3600)/60),s=total%60;
+  if(h>0)return `${h}h ${m}m`;
+  if(m>0)return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function renderPassiveIncome(){
+  accruePassiveIncome();
+  tickDrakeCoin();
+  updateRothIra();
+  const grid=el('passiveIncomeGrid');
+  if(!grid)return;
+  const rate=passiveIncomeRate(),ready=Math.floor(passiveIncomeState.uncollected||0);
+  el('passiveReadyAmount').textContent=money(ready);
+  el('passiveIncomeRate').textContent=`${money(rate)} / min`;
+  el('passiveOwnedCount').textContent=Object.values(passiveIncomeState.owned||{}).filter(level=>level>0).length;
+  el('collectPassiveIncomeBtn').disabled=ready<=0;
+  grid.innerHTML='';
+  PASSIVE_BUSINESSES.forEach(b=>{
+    const level=passiveIncomeState.owned?.[b.id]||0,cost=passiveBusinessCost(b);
+    const income=level>0?b.baseIncome+(level-1)*b.upgradeIncome:0;
+    const card=document.createElement('div');
+    card.className='location passive-business-card'+(level<=0?' locked':'');
+    card.innerHTML=`<h3>${b.name}</h3><p>${b.desc}</p><div class="loc-stats"><div class="pill">Level<b>${level}</b></div><div class="pill">Income<b>${money(income)} / min</b></div><div class="pill">Next Cost<b>${money(cost)}</b></div><div class="pill">Next Adds<b>${money(level<=0?b.baseIncome:b.upgradeIncome)} / min</b></div></div><button data-passive-business="${b.id}" ${bankroll<cost?'disabled':''}>${level<=0?'Start Business':'Upgrade'}</button><div class="unlock-note">${bankroll<cost?'Need '+money(cost)+' in bank':'Ready to invest'}</div>`;
+    grid.appendChild(card);
+  });
+  grid.querySelectorAll('button[data-passive-business]').forEach(btn=>btn.onclick=()=>buyPassiveBusiness(btn.dataset.passiveBusiness));
+  renderDrakeCoin();
+  renderRothIra();
+  savePassiveIncome();
+}
+function renderDrakeCoin(){
+  const drake=passiveIncomeState.drake;
+  if(!el('drakeTickerPrice'))return;
+  const value=drake.coins*drake.price;
+  const basis=drake.costBasis||0,gain=value-basis,gainPct=basis>0?gain/basis*100:0;
+  el('drakeTickerPrice').textContent=`$${drake.price.toFixed(2)}`;
+  el('drakeTickerMood').textContent=drakeMood();
+  el('drakeCoinOwned').textContent=`${drake.coins.toFixed(4)} DRAKE`;
+  el('drakeCoinValue').textContent=money(value);
+  const change=el('drakeCoinGain');
+  if(change){
+    change.textContent=basis>0?`${gain>=0?'+':''}${money(gain)} (${gainPct>=0?'+':''}${gainPct.toFixed(1)}%)`:'No position';
+    change.className=`position-change ${basis<=0?'neutral':gain>=0?'gain':'loss'}`;
+  }
+  renderLineChart(el('drakeLineChart'),drake.history||[drake.price]);
+}
+function renderRothIra(){
+  if(!el('rothLockedBalance'))return;
+  const roth=passiveIncomeState.roth,remaining=(roth.lockedUntil||0)-Date.now();
+  el('rothLockedBalance').textContent=money(roth.lockedBalance||0);
+  el('rothUnlockedBalance').textContent=money(roth.unlockedBalance||0);
+  el('rothProjected').textContent=money(rothTotalValue());
+  el('rothRate').textContent=`${(ROTH_DAILY_RATE*100).toFixed(2)}%`;
+  el('rothUnlockText').textContent=roth.lockedBalance?formatDuration(remaining):'No locked funds';
+  el('withdrawRothBtn').disabled=(roth.unlockedBalance||0)<1;
+}
+function buyPassiveBusiness(id){
+  accruePassiveIncome();
+  const business=PASSIVE_BUSINESSES.find(b=>b.id===id);
+  if(!business)return;
+  const cost=passiveBusinessCost(business);
+  if(bankroll<cost)return;
+  bankroll-=cost;
+  passiveIncomeState.owned={...(passiveIncomeState.owned||{}),[id]:(passiveIncomeState.owned?.[id]||0)+1};
+  saveBankroll();
+  savePassiveIncome();
+  renderMenu();
+}
+function buyDrakeCoin(){
+  tickDrakeCoin();
+  const amount=Math.floor(parseFloat(el('drakeBuyAmount').value||'0'));
+  if(!amount||amount<=0||bankroll<amount)return;
+  bankroll-=amount;
+  passiveIncomeState.drake.coins+=amount/passiveIncomeState.drake.price;
+  passiveIncomeState.drake.costBasis=(passiveIncomeState.drake.costBasis||0)+amount;
+  el('drakeBuyAmount').value='';
+  saveBankroll();
+  savePassiveIncome();
+  renderMenu();
+}
+function sellDrakeCoin(amount=null){
+  tickDrakeCoin();
+  const drake=passiveIncomeState.drake;
+  const coins=amount==null?parseFloat(el('drakeSellAmount').value||'0'):amount;
+  if(!coins||coins<=0||drake.coins<=0)return;
+  const sold=Math.min(coins,drake.coins);
+  const basisSold=drake.coins>0?(drake.costBasis||0)*(sold/drake.coins):0;
+  drake.coins-=sold;
+  drake.costBasis=Math.max(0,(drake.costBasis||0)-basisSold);
+  if(drake.coins<0.000001){drake.coins=0;drake.costBasis=0}
+  bankroll+=Math.floor(sold*drake.price);
+  el('drakeSellAmount').value='';
+  careerStats.biggestBankroll=Math.max(careerStats.biggestBankroll,bankroll);
+  saveBankroll();
+  saveCareerStats();
+  savePassiveIncome();
+  renderMenu();
+}
+function depositRoth(){
+  const amount=Math.floor(parseFloat(el('rothDepositAmount').value||'0'));
+  if(!amount||amount<=0||bankroll<amount)return;
+  updateRothIra();
+  bankroll-=amount;
+  passiveIncomeState.roth.lockedBalance=(passiveIncomeState.roth.lockedBalance||0)+amount;
+  passiveIncomeState.roth.lockedUntil=Date.now()+24*60*60*1000;
+  passiveIncomeState.roth.lastUpdated=Date.now();
+  el('rothDepositAmount').value='';
+  saveBankroll();
+  savePassiveIncome();
+  renderMenu();
+}
+function withdrawRoth(){
+  updateRothIra();
+  const roth=passiveIncomeState.roth;
+  const payout=Math.floor(roth.unlockedBalance||0);
+  if(payout<=0)return;
+  bankroll+=payout;
+  roth.unlockedBalance=Math.max(0,(roth.unlockedBalance||0)-payout);
+  careerStats.biggestBankroll=Math.max(careerStats.biggestBankroll,bankroll);
+  saveBankroll();
+  saveCareerStats();
+  savePassiveIncome();
+  renderMenu();
+}
+function collectPassiveIncome(){
+  accruePassiveIncome();
+  const payout=Math.floor(passiveIncomeState.uncollected||0);
+  if(payout<=0)return;
+  bankroll+=payout;
+  passiveIncomeState.uncollected=(passiveIncomeState.uncollected||0)-payout;
+  careerStats.biggestBankroll=Math.max(careerStats.biggestBankroll,bankroll);
+  saveBankroll();
+  saveCareerStats();
+  savePassiveIncome();
+  renderMenu();
+}
+function renderMenu(){saveBankroll();applyCosmetics();applyMobileMode();el('menuBankroll').textContent=money(bankroll);el('playerNameInput').value=playerName;el('mineRewardText').textContent=minesReward();el('mineRewardBtnText').textContent=minesReward();renderShop();renderPowerUps();renderCompanions();renderBots();renderProfile();renderPlayerProfile();renderSessionRecap();renderPassiveIncome();const box=el('locations');box.innerHTML='';TABLES.forEach((t,i)=>{const unlocked=bankroll>=t.unlock;const canBuy=bankroll>=t.buyIn;const scout=hasPowerUp('table_scout')?`<div class="pill">Pool<b>${scoutBotText(t)}</b></div>`:'';const d=document.createElement('div');d.className='location '+(!unlocked?'locked':'');d.innerHTML=`<h3>${i+1}. ${t.name}</h3><p>${t.desc}</p><div class="loc-stats"><div class="pill">Buy-In<b>${money(t.buyIn)}</b></div><div class="pill">Blinds<b>${money(t.sb)} / ${money(t.bb)}</b></div><div class="pill">Bots<b>${t.bots}</b></div><div class="pill">Skill<b>${t.skill}</b></div>${scout}</div><button ${!unlocked||!canBuy?'disabled':''}>Play This Table</button><div class="unlock-note">${!unlocked?'Unlock at '+money(t.unlock)+' bankroll':!canBuy?'Need '+money(t.buyIn)+' to buy in':'Available now'}</div>`;d.querySelector('button').onclick=()=>startTable(i);box.appendChild(d)});if(!el('shopPage').classList.contains('hidden'))showMenuPage('shopPage');else if(!el('infoPage').classList.contains('hidden'))showMenuPage('infoPage');else if(!el('passiveIncomePage').classList.contains('hidden'))showMenuPage('passiveIncomePage');else showMenuPage('tablesPage')}
 function startTable(i){table=TABLES[i];bankroll-=table.buyIn;saveBankroll();createPlayers();startSession();handNum=1;el('log').innerHTML='';el('menuScreen').classList.add('hidden');el('gameScreen').classList.remove('hidden');el('tableName').textContent=table.name;el('tableSubtitle').textContent=`${money(table.buyIn)} buy-in · blinds ${money(table.sb)} / ${money(table.bb)} · ${table.skill} bots`;resetForHand()}
 function createPlayers(){
 players=[{name:playerName,human:true,chips:table.buyIn}];
@@ -1249,7 +1517,34 @@ function botDecision(bot){
   return {action:'call'};
 }
 function estimateStrength(p){if(community.length===0)return preflopStrength(p.hand);let e=evaluateBest([...p.hand,...community]);return Math.min(1,e.rank/8*.76+e.values[0]/14*.16+drawPotential(p.hand,community))}
-function calculateHeroWinOdds(){let hero=players[0];if(!hero||!hero.hasCards||hero.folded||hero.out||hero.hand.length!==2)return'--';let opps=players.filter(p=>!p.human&&!p.folded&&!p.out&&p.hasCards);if(opps.length===0)return'100%';let known=[...hero.hand,...community];players.forEach(p=>{if(!p.human&&p.showCards&&p.hand.length)known.push(...p.hand)});let keys=new Set(known.map(c=>c.rank+c.suit)),base=[];for(const s of SUITS)for(const r of RANKS)if(!keys.has(r+s))base.push({rank:r,suit:s,value:RANK_VALUE[r]});let sims=community.length>=5?1:700,w=0,t=0;for(let sim=0;sim<sims;sim++){let d=[...base];for(let i=d.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]]}let board=[...community];while(board.length<5)board.push(d.pop());let he=evaluateBest([...hero.hand,...board]),lost=false,tie=false;for(const o of opps){let oh=o.showCards&&o.hand.length===2?[...o.hand]:[d.pop(),d.pop()],oe=evaluateBest([...oh,...board]),cmp=compareHands(he,oe);if(cmp<0){lost=true;break}if(cmp===0)tie=true}if(!lost&&tie)t++;else if(!lost)w++}return(((w+t*.5)/sims)*100).toFixed(1)+'%'}
+function calculateHeroWinOdds(){
+  let hero=players[0];
+  if(!hero||!hero.hasCards||hero.folded||hero.out||hero.hand.length!==2)return'--';
+  let opps=players.filter(p=>!p.human&&!p.folded&&!p.out&&p.hasCards);
+  if(opps.length===0)return'100%';
+  let known=[...hero.hand,...community];
+  const hiddenOpps=opps.filter(p=>!(p.showCards&&p.hand.length===2));
+  players.forEach(p=>{if(!p.human&&p.showCards&&p.hand.length)known.push(...p.hand)});
+  let keys=new Set(known.map(c=>c.rank+c.suit)),base=[];
+  for(const s of SUITS)for(const r of RANKS)if(!keys.has(r+s))base.push({rank:r,suit:s,value:RANK_VALUE[r]});
+  let sims=community.length>=5&&hiddenOpps.length===0?1:1000,w=0,t=0;
+  for(let sim=0;sim<sims;sim++){
+    let d=[...base];
+    for(let i=d.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[d[i],d[j]]=[d[j],d[i]]}
+    let board=[...community];
+    while(board.length<5)board.push(d.pop());
+    let he=evaluateBest([...hero.hand,...board]),lost=false,tie=false;
+    for(const o of opps){
+      let oh=o.showCards&&o.hand.length===2?[...o.hand]:[d.pop(),d.pop()];
+      let oe=evaluateBest([...oh,...board]),cmp=compareHands(he,oe);
+      if(cmp<0){lost=true;break}
+      if(cmp===0)tie=true;
+    }
+    if(!lost&&tie)t++;
+    else if(!lost)w++;
+  }
+  return(((w+t*.5)/sims)*100).toFixed(1)+'%';
+}
 function quickRaiseTarget(m){let h=players[0],base=table.bb*m,target=currentBet===0?base:Math.max(currentBet+minRaise,currentBet+base);return Math.min(target,h.bet+h.chips)}
 function quickRaise(m){playerAction('raise',quickRaiseTarget(m))}
 function mobileDragBetAvailable(){
@@ -1317,6 +1612,7 @@ function cashOut(){
     const net=stack-currentSession.startStack;
     if(selectedCompanion==='lucky_chip'&&careerStats.handsPlayed>0&&careerStats.handsPlayed%10===0){bankroll+=25;currentSession.achievements.push('Lucky Chip loyalty bonus +$25')}
     lastSessionRecap={...currentSession,net,busts:[...currentSession.busts],achievements:[...currentSession.achievements],bestHand:currentSession.bestHand};
+    showSessionRecap=true;
     careerStats.totalNet+=net;
     careerStats.cashOuts++;
   }
@@ -1418,6 +1714,7 @@ function floodReveal(index,size){
 el('showTablesBtn').onclick=()=>showMenuPage('tablesPage');
 el('showShopBtn').onclick=()=>showMenuPage('shopPage');
 el('showInfoBtn').onclick=()=>showMenuPage('infoPage');
+el('showPassiveIncomeBtn').onclick=()=>showMenuPage('passiveIncomePage');
 document.querySelectorAll('.backToTablesBtn').forEach(btn=>btn.onclick=()=>showMenuPage('tablesPage'));
 document.querySelectorAll('.submenu-actions button[data-subpage-target]').forEach(btn=>{
   btn.onclick=()=>showSubmenu(btn.closest('.submenu-actions').dataset.submenu,btn.dataset.subpageTarget);
@@ -1430,8 +1727,15 @@ el('toggleMobileModeBtn').onclick=()=>{
 };
 
 el('closeSessionRecapBtn').onclick=()=>{
+  showSessionRecap=false;
   el('sessionRecapPanel').classList.add('hidden');
 };
+el('collectPassiveIncomeBtn').onclick=collectPassiveIncome;
+el('buyDrakeCoinBtn').onclick=buyDrakeCoin;
+el('sellDrakeCoinBtn').onclick=()=>sellDrakeCoin();
+el('sellAllDrakeCoinBtn').onclick=()=>sellDrakeCoin(passiveIncomeState.drake.coins);
+el('depositRothBtn').onclick=depositRoth;
+el('withdrawRothBtn').onclick=withdrawRoth;
 
 el('saveNameBtn').onclick=()=>{
   const cleaned=el('playerNameInput').value.trim() || 'You';
@@ -1440,7 +1744,7 @@ el('saveNameBtn').onclick=()=>{
   renderMenu();
 };
 el('playerNameInput').addEventListener('change',()=>el('saveNameBtn').click());
-el('openMinesBtn').onclick=()=>{el('minesPanel').classList.toggle('hidden');if(!mineGrid.length)startMinesweeper()};
+el('openMinesBtn').onclick=()=>{showMenuPage('passiveIncomePage');showSubmenu('passive','minesPanel');if(!mineGrid.length)startMinesweeper()};
 el('flagModeBtn').onclick=()=>{
   flagMode=!flagMode;
   el('flagModeBtn').textContent=`Flag Mode: ${flagMode ? 'ON' : 'OFF'}`;
@@ -1454,5 +1758,6 @@ el('customBetSlider').oninput=()=>{el('customBetAmount').textContent=money(parse
 el('customBetBtn').onclick=()=>playerAction('raise',parseInt(el('customBetSlider').value||0,10));el('nextHandBtn').onclick=()=>{handNum++;resetForHand()};el('leaveTableBtn').onclick=cashOut;
 window.addEventListener('pagehide', saveBankrollSnapshot);
 window.addEventListener('beforeunload', saveBankrollSnapshot);
+setInterval(()=>{if(!el('passiveIncomePage')?.classList.contains('hidden'))renderPassiveIncome()},10000);
 renderMenu();
 
